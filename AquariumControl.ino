@@ -1,4 +1,6 @@
 #include "WiFi.h"
+#include <string>
+#include <sstream>
 
 // Set web server port number to 80
 WiFiServer server(80);
@@ -8,11 +10,6 @@ class WifiHelper
 public:
   // Variable to store the HTTP request
   String header;
-
-  // Auxiliar variables to store the current output state
-  String outputState = "off";
-  // Assign output variables to GPIO pins
-  const int output = GPIO_NUM_2;
   // Current time
   unsigned long currentTime = millis();
   // Previous time
@@ -51,63 +48,82 @@ public:
       previousTime = currentTime;
       Serial.println("New Client."); // print a message out in the serial port
       String currentLine = "";       // make a String to hold incoming data from the client
+
       while (client.connected() && currentTime - previousTime <= timeoutTime)
       { // loop while the client's connected
         currentTime = millis();
         if (client.available())
         {                         // if there's bytes to read from the client,
           char c = client.read(); // read a byte, then
-          Serial.write(c);        // print it out the serial monitor
+          // Serial.write(c);        // print it out the serial monitor
           header += c;
+
           if (c == '\n')
-          { // if the byte is a newline character
-            // if the current line is blank, you got two newline characters in a row.
-            // that's the end of the client HTTP request, so send a response:
-            if (currentLine.length() == 0)
-            {
-              // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
-              // and a content-type so the client knows what's coming, then a blank line:
-              client.println("HTTP/1.1 200 OK");
-              client.println("Content-type:text/html");
-              client.println("Connection: close");
-              client.println();
-
-              // turns the GPIOs on and off
-              if (header.indexOf("GET /26/on") >= 0)
-              {
-                Serial.println("GPIO on");
-                outputState = "on";
-                digitalWrite(output, HIGH);
-              }
-              else if (header.indexOf("GET /26/off") >= 0)
-              {
-                Serial.println("GPIO off");
-                outputState = "off";
-                digitalWrite(output, LOW);
-              }
-
-              // The HTTP response ends with another blank line
-              client.println();
-              // Break out of the while loop
-              break;
-            }
-            else
-            { // if you got a newline, then clear currentLine
-              currentLine = "";
-            }
+          {
+            // if you got a newline, then clear currentLine
+            currentLine = "";
           }
-          else if (c != '\r')
+          else
           {                   // if you got anything else but a carriage return character,
             currentLine += c; // add it to the end of the currentLine
           }
         }
       }
+
+      // header generated, now check whats in there
+      if (header.indexOf("POST /config") >= 0)
+      {
+        // post request for updating settings recieved
+        Serial.println("Request recieved for updating settings");
+        Serial.print("Change requested : ");
+        Serial.println(currentLine);
+
+        breakDownRequest(currentLine);
+
+        client.println("HTTP/1.1 200 OK");
+        client.println("Content-type:text/html");
+        client.println("Connection: close");
+        client.println();
+        client.println();
+        client.println("OK");
+        client.println();
+        client.println();
+      }
+
       // Clear the header variable
       header = "";
       // Close the connection
       client.stop();
       Serial.println("Client disconnected.");
       Serial.println("");
+    }
+  }
+
+private:
+  void breakDownRequest(String query)
+  {
+    Serial.println("Breaking down");
+
+    // convert arduino String to std::string for operation
+    std::string queryString = std::string(query.c_str());
+    std::stringstream ss(queryString);
+    std::string segment;
+    
+    //string tokenize by & percent
+    while(std::getline(ss, segment, '&'))
+    {
+
+      /*//split each segment by = for param name and value
+      size_t found;
+      if ((found = segment.find("=")) != std::string::npos)      
+      {
+          std::string param = segment.substr(0,found);
+          Serial.print("Parameter : ");
+          Serial.println(param.c_str());
+          std::string value = segment.substr(found+1, std::string::npos);
+          Serial.print("Value : ");
+          Serial.println(value.c_str());
+      }   */   
     }
   }
 } wifiHelper;
@@ -125,6 +141,6 @@ void setup()
 void loop()
 {
   wifiHelper.listen();
-  delay(2000);
-  Serial.println("Do the usual stuff");
+  delay(3000);
+  Serial.print(".");
 }
