@@ -1,6 +1,7 @@
 #include "WiFi.h"
 #include <string>
 #include <sstream>
+#include <math.h>
 
 // Set web server port number to 80
 WiFiServer server(80);
@@ -108,22 +109,23 @@ private:
     std::string queryString = std::string(query.c_str());
     std::stringstream ss(queryString);
     std::string segment;
-    
-    //string tokenize by & percent
-    while(std::getline(ss, segment, '&'))
+
+    // string tokenize by & percent
+    while (std::getline(ss, segment, '&'))
     {
 
-      /*//split each segment by = for param name and value
+      // split each segment by = for param name and value
       size_t found;
-      if ((found = segment.find("=")) != std::string::npos)      
+      if ((found = segment.find("=")) != std::string::npos)
       {
-          std::string param = segment.substr(0,found);
-          Serial.print("Parameter : ");
-          Serial.println(param.c_str());
-          std::string value = segment.substr(found+1, std::string::npos);
-          Serial.print("Value : ");
-          Serial.println(value.c_str());
-      }   */   
+        std::string param = segment.substr(0, found);
+        std::string value = segment.substr(found + 1, std::string::npos);
+        
+        if (param == "white1_pwm")
+        {         
+          Serial.print("Set white brightness");
+        }
+      }
     }
   }
 } wifiHelper;
