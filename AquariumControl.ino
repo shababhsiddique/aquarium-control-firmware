@@ -1,15 +1,22 @@
 #include <Preferences.h>
 #include <WiFi.h>
+#include <time.h>
 
 #include <sstream>
 #include <string>
 
 Preferences prefs;
+
+unsigned long epochTime;
+unsigned long bootEpochTime;
+unsigned long lastEpochUpdate;
+
+// Variable to save current epoch time
+
 class Time {
  public:
   static const int WEEKINSECONDS = 604800;  // 24 * 60 * 60 * 7
-  static const int DAYINSECONDS =
-      86400;  // 24 * 60 * 60; // 86400 seconds in a day
+  static const int DAYINSECONDS = 86400;    // 24 * 60 * 60; 186400 seconds
   static const int HOURINSECONDS = 3600;  // 60 * 60; // 3600 seconds in an hour
   static const int MINUTEINSECONDS = 60;  // 60 seconds in a minute
 
@@ -27,15 +34,48 @@ class Time {
         minute = floor((timestamp % HOUR) / MINUTE);
         second = floor((timestamp % HOUR) % MINUTE );
   }*/
+
+  static void setNtpServer() {
+    configTime(0, 0, "pool.ntp.org");
+    bootEpochTime = Time::getNtpTime();    
+  }
+
+  // Function that gets current epoch time
+  static unsigned long getNtpTime() {
+    Serial.println("Hitting NTP Server");
+    time_t now;
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+      Serial.println("Failed to obtain time");
+      lastEpochUpdate = 0;
+      return (0);
+    }
+    time(&now);
+    lastEpochUpdate = now;
+    return now;
+  }
+
+  //Calculate time using boot epoch time and millis() runtime, refresh with live every hour
+  static unsigned long adjustTimeWithRuntime() {
+    //if last epoch update more than an hour ago, fecth live
+    if((epochTime - lastEpochUpdate) > HOURINSECONDS){
+      epochTime = Time::getNtpTime();   
+    } else {
+      //otherwise calculate from millis and boot time
+      unsigned long runtime = millis();
+      unsigned int seconds = (int)floor(runtime / 1000);
+      epochTime = seconds + bootEpochTime;
+    }    
+  }
 };
 
 class LEDStrip {
  private:
   int sunriseSteps = 0;
   int sunsetSteps = 0;
-  std::string color;
 
  public:
+  std::string color;
   unsigned int setBrightness = 0;
   unsigned int onTime = 0;
   unsigned int offTime = 0;
@@ -103,16 +143,14 @@ class LEDStrip {
     }
   }
 
-  void showStripInfo() {
-    Serial.println(getStripInfo().c_str()); 
-  }
+  void showStripInfo() { Serial.println(getStripInfo().c_str()); }
 
-  std::string getStripInfo(){
+  std::string getStripInfo() {
     std::string output = "";
     output += "Strip Info for";
     output += color.c_str();
     output += "\nBrightness : ";
-    output +=  String(setBrightness).c_str();
+    output += String(setBrightness).c_str();
     output += "\nON :";
     output += String(onTime).c_str();
     output += "\nOFF :";
@@ -121,6 +159,8 @@ class LEDStrip {
     output += String(sunrise).c_str();
     output += "\nSunset :";
     output += String(sunset).c_str();
+    output += "\nCurrent Brightness : ";
+    output += String(currentBrightness).c_str();
     return output;
   }
 
@@ -236,14 +276,14 @@ class WifiHelper {
 
       if (header.indexOf("GET /view") >= 0) {
         // post request for updating settings recieved
-          client.println(white.getStripInfo().c_str());
-          client.println();
-          client.println(red.getStripInfo().c_str());
-          client.println();
-          client.println(green.getStripInfo().c_str());
-          client.println();
-          client.println(blue.getStripInfo().c_str());
-          client.println();
+        client.println(white.getStripInfo().c_str());
+        client.println();
+        client.println(red.getStripInfo().c_str());
+        client.println();
+        client.println(green.getStripInfo().c_str());
+        client.println();
+        client.println(blue.getStripInfo().c_str());
+        client.println();
       }
 
       client.println(white.currentBrightness);
@@ -266,6 +306,8 @@ void setup() {
   Serial.begin(115200);
   prefs.begin("aq-controller", false);
   wifiHelper.initWiFi();
+  Time::setNtpServer();
+
   // initialize digital pin LED_BUILTIN as an output.
   pinMode(GPIO_NUM_2, OUTPUT);
 
@@ -277,10 +319,9 @@ void setup() {
 void loop() {
   wifiHelper.listen();
   delay(1000);
-  Serial.print("set brightness :");
-  Serial.print(white.setBrightness);
-  Serial.print(" : ");
-  Serial.println(prefs.getUInt("white_pwm", 0));
+  Time::adjustTimeWithRuntime();
+  Serial.print("Epoch Time: ");
+  Serial.println(epochTime);
 }
 
 void processRequest(String query) {
