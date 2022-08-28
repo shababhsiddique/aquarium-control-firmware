@@ -104,18 +104,24 @@ class LEDStrip {
   }
 
   void showStripInfo() {
-    Serial.print("Strip Info for");
-    Serial.println(color.c_str());
-    Serial.print("Brightness : ");
-    Serial.println(setBrightness);
-    Serial.print("ON :");
-    Serial.println(onTime);
-    Serial.print("OFF :");
-    Serial.println(offTime);
-    Serial.print("Sunrise :");
-    Serial.println(sunrise);
-    Serial.print("Sunset :");
-    Serial.println(sunset);
+    Serial.println(getStripInfo().c_str()); 
+  }
+
+  std::string getStripInfo(){
+    std::string output = "";
+    output += "Strip Info for";
+    output += color.c_str();
+    output += "\nBrightness : ";
+    output +=  String(setBrightness).c_str();
+    output += "\nON :";
+    output += String(onTime).c_str();
+    output += "\nOFF :";
+    output += String(offTime).c_str();
+    output += "\nSunrise :";
+    output += String(sunrise).c_str();
+    output += "\nSunset :";
+    output += String(sunset).c_str();
+    return output;
   }
 
   void updateStatus(unsigned int time) {
@@ -212,22 +218,34 @@ class WifiHelper {
         }
       }
 
+      client.println("HTTP/1.1 200 OK");
+      client.println("Content-type:text/html");
+      client.println("Connection: close");
+      client.println();
+      client.println();
+
       // header generated, now check whats in there
       if (header.indexOf("POST /config") >= 0) {
         // post request for updating settings recieved
         Serial.println("Request recieved for updating settings");
         Serial.print("Change requested : ");
         Serial.println(currentLine);
-
         processRequest(currentLine);
+        client.println("ok");
       }
 
-      client.println("HTTP/1.1 200 OK");
-      client.println("Content-type:text/html");
-      client.println("Connection: close");
-      client.println();
-      client.println();
-      client.println("ok");
+      if (header.indexOf("GET /view") >= 0) {
+        // post request for updating settings recieved
+          client.println(white.getStripInfo().c_str());
+          client.println();
+          client.println(red.getStripInfo().c_str());
+          client.println();
+          client.println(green.getStripInfo().c_str());
+          client.println();
+          client.println(blue.getStripInfo().c_str());
+          client.println();
+      }
+
       client.println(white.currentBrightness);
       client.println();
       client.println();
@@ -306,8 +324,7 @@ void processRequest(String query) {
 }
 
 void updateSettings(std::string color, std::string param, std::string value) {
-
-  LEDStrip* stripSelected = &red;  
+  LEDStrip *stripSelected = &red;
   if (color == "white") {
     stripSelected = &white;
   } else if (color == "red") {
@@ -333,16 +350,13 @@ void updateSettings(std::string color, std::string param, std::string value) {
   if (param == "sr") {
     Serial.println("Set sunrise");
     stripSelected->sunrise = atoi(value.c_str());
-    stripSelected->calculateSunriseSunsetSteps();  
+    stripSelected->calculateSunriseSunsetSteps();
   }
   if (param == "ss") {
     Serial.println("Set sunset");
     stripSelected->sunset = atoi(value.c_str());
-    stripSelected->calculateSunriseSunsetSteps();  
+    stripSelected->calculateSunriseSunsetSteps();
 
     stripSelected->showStripInfo();
   }
-
-  
-  
 }
