@@ -1,12 +1,14 @@
 <html>
 
 <body>
+    this file is not part of the firmare, just here to make it easy replicate post request.
     <form method="POST" action="http://192.168.0.104/config">
-        <input type="text" name="white1_pwm" value="10" />
-        <input type="text" name="white2_pwm" value="10" />
-        <input type="text" name="red_pwm" value="10" />
-        <input type="text" name="green_pwm" value="10" />
-        <input type="text" name="blue_pwm" value="10" />
+        Brightness <input type="text" name="white_pwm" value="10" /> <br/>
+        On Time <input type="text" name="white_on" value="10" /><br/>
+        Off Time <input type="text" name="white_off" value="10" /><br/>
+        Sunrise Duration <input type="text" name="white_sr" value="10" /><br/>
+        Sunset Duration <input type="text" name="white_ss" value="10" /><br/>
+
         <input type="submit" name="action" value="update"/>
     </form>
 </body>

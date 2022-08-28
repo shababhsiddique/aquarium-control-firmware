@@ -1,10 +1,10 @@
-#include <math.h>
+#include <Preferences.h>
+#include <WiFi.h>
 
 #include <sstream>
 #include <string>
 
-#include "WiFi.h"
-
+Preferences prefs;
 class Time {
  public:
   static const int WEEKINSECONDS = 604800;  // 24 * 60 * 60 * 7
@@ -33,32 +33,89 @@ class LEDStrip {
  private:
   int sunriseSteps = 0;
   int sunsetSteps = 0;
-  char color[1];
+  std::string color;
 
  public:
-  unsigned int setBrightness;
-  unsigned int onTime;
-  unsigned int offTime;
-  unsigned int sunrise;
-  unsigned int sunset;
-  unsigned int currentBrightness;
+  unsigned int setBrightness = 0;
+  unsigned int onTime = 0;
+  unsigned int offTime = 0;
+  unsigned int sunrise = 0;
+  unsigned int sunset = 0;
+  unsigned int currentBrightness = 0;
 
   LEDStrip() {}
-  LEDStrip(unsigned int d, unsigned int on, unsigned int off, unsigned int sr,
-           unsigned int ss, char c) {
-    setBrightness = d;
-    onTime = on;
-    offTime = off;
-    sunset = ss;
-    sunrise = sr;
-    color[0] = c;
-    currentBrightness = 0;
+  LEDStrip(std::string c) {
+    color = c;
+    std::string key;
+    // find if preferances has previously set data otherwise default to 0
+    readUpdateFromPreferences();
+    calculateSunriseSunsetSteps();
+  }
+
+  void readUpdateFromPreferences() {
+    std::string key;
+    key = color + "_pwm";
+    setBrightness = prefs.getUInt(key.c_str(), 0);  // default 0
+
+    key = color + "_on";
+    onTime = prefs.getUInt(key.c_str(), 0);  // default 0
+
+    key = color + "_off";
+    offTime = prefs.getUInt(key.c_str(), 0);  // default 0
+
+    key = color + "_sr";
+    sunrise = prefs.getUInt(key.c_str(), 0);  // default 0
+
+    key = color + "_ss";
+    sunset = prefs.getUInt(key.c_str(), 0);  // default 0
+  }
+
+  void writeUpdateToPreferances() {
+    std::string key;
+    // find if preferances has previously set data otherwise default to 0
+
+    key = color + "_pwm";
+    prefs.putUInt(key.c_str(), setBrightness);  // default 0
+
+    key = color + "_on";
+    prefs.putUInt(key.c_str(), onTime);  // default 0
+
+    key = color + "_off";
+    prefs.putUInt(key.c_str(), offTime);  // default 0
+
+    key = color + "_sr";
+    prefs.putUInt(key.c_str(), sunrise);  // default 0
+
+    key = color + "_ss";
+    prefs.putUInt(key.c_str(), sunset);  // default 0
+
+    Serial.println("Preferences written");
+
+    calculateSunriseSunsetSteps();
+  }
+
+  void calculateSunriseSunsetSteps() {
     if (sunrise != 0) {
       sunriseSteps = ceil(setBrightness / sunrise);
     }
     if (sunset != 0) {
       sunsetSteps = ceil(setBrightness / sunset);
     }
+  }
+
+  void showStripInfo() {
+    Serial.print("Strip Info for");
+    Serial.println(color.c_str());
+    Serial.print("Brightness : ");
+    Serial.println(setBrightness);
+    Serial.print("ON :");
+    Serial.println(onTime);
+    Serial.print("OFF :");
+    Serial.println(offTime);
+    Serial.print("Sunrise :");
+    Serial.println(sunrise);
+    Serial.print("Sunset :");
+    Serial.println(sunset);
   }
 
   void updateStatus(unsigned int time) {
@@ -91,7 +148,7 @@ class LEDStrip {
 };
 
 // each led strips
-LEDStrip white1, white2, red, green, blue;
+LEDStrip white, red, green, blue;
 void processRequest(String query);
 
 // Set web server port number to 80
@@ -163,16 +220,17 @@ class WifiHelper {
         Serial.println(currentLine);
 
         processRequest(currentLine);
-
-        client.println("HTTP/1.1 200 OK");
-        client.println("Content-type:text/html");
-        client.println("Connection: close");
-        client.println();
-        client.println();
-        client.println("OK");
-        client.println();
-        client.println();
       }
+
+      client.println("HTTP/1.1 200 OK");
+      client.println("Content-type:text/html");
+      client.println("Connection: close");
+      client.println();
+      client.println();
+      client.println("ok");
+      client.println(white.currentBrightness);
+      client.println();
+      client.println();
 
       // Clear the header variable
       header = "";
@@ -188,27 +246,24 @@ class WifiHelper {
 // the setup function runs once when you press reset or power the board
 void setup() {
   Serial.begin(115200);
+  prefs.begin("aq-controller", false);
   wifiHelper.initWiFi();
   // initialize digital pin LED_BUILTIN as an output.
   pinMode(GPIO_NUM_2, OUTPUT);
 
-  white1 = LEDStrip(
-      80,                                                        /*Brightness*/
-      16 * Time::HOURINSECONDS + 0 * Time::MINUTEINSECONDS,      /*Start time*/
-      16 * Time::HOURINSECONDS + 0 * Time::MINUTEINSECONDS + 18, /*End time*/
-      15, /*sunrise seconds*/
-      7,  /*sunset seconds*/
-      'w');
+  white = LEDStrip("white");
+  white.showStripInfo();
 }
 
 // the loop function runs over and over again forever
 void loop() {
   wifiHelper.listen();
   delay(1000);
-  Serial.print(".");
+  Serial.print("set brightness :");
+  Serial.print(white.setBrightness);
+  Serial.print(" : ");
+  Serial.println(prefs.getUInt("white_pwm", 0));
 }
-
-
 
 void processRequest(String query) {
   Serial.println("Breaking down");
@@ -225,11 +280,69 @@ void processRequest(String query) {
     if ((found = segment.find("=")) != std::string::npos) {
       std::string param = segment.substr(0, found);
       std::string value = segment.substr(found + 1, std::string::npos);
+      std::string color;
 
-      if (param == "white1_pwm") {
-        Serial.print("Set white brightness");
-        white1.setBrightness = atoi(value.c_str());
+      // split param by underscore to get color and param name
+      if ((found = param.find("_")) != std::string::npos) {
+        color = param.substr(0, found);
+        param = param.substr(found + 1, std::string::npos);
       }
+
+      Serial.print(color.c_str());
+      Serial.print(param.c_str());
+      Serial.print(value.c_str());
+
+      updateSettings(color, param, value);
     }
   }
+
+  white.writeUpdateToPreferances();
+  red.writeUpdateToPreferances();
+  green.writeUpdateToPreferances();
+  blue.writeUpdateToPreferances();
+
+  Serial.println("Post request processed");
+  white.showStripInfo();
+}
+
+void updateSettings(std::string color, std::string param, std::string value) {
+
+  LEDStrip* stripSelected = &red;  
+  if (color == "white") {
+    stripSelected = &white;
+  } else if (color == "red") {
+    stripSelected = &red;
+  } else if (color == "green") {
+    stripSelected = &green;
+  } else if (color == "blue") {
+    stripSelected = &blue;
+  }
+
+  if (param == "pwm") {
+    Serial.println("Set brightness");
+    stripSelected->setBrightness = atoi(value.c_str());
+  }
+  if (param == "on") {
+    Serial.println("Set on");
+    stripSelected->onTime = atoi(value.c_str());
+  }
+  if (param == "off") {
+    Serial.println("Set of");
+    stripSelected->offTime = atoi(value.c_str());
+  }
+  if (param == "sr") {
+    Serial.println("Set sunrise");
+    stripSelected->sunrise = atoi(value.c_str());
+    stripSelected->calculateSunriseSunsetSteps();  
+  }
+  if (param == "ss") {
+    Serial.println("Set sunset");
+    stripSelected->sunset = atoi(value.c_str());
+    stripSelected->calculateSunriseSunsetSteps();  
+
+    stripSelected->showStripInfo();
+  }
+
+  
+  
 }
